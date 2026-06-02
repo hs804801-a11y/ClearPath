@@ -45,6 +45,7 @@ ClearPath offers two modes depending on the user's need:
 
 ## Architecture
 
+```
 User Input
 ↓
 Mode Selection (Fast / Detailed)
@@ -56,6 +57,7 @@ Task Executor (runs each sub-task)
 Result Synthesizer (combines into final answer)
 ↓
 Markdown Rendered Output to User
+```
 
 This pattern is known as the ReAct agent loop (Reason + Act) — a standard architecture in AI agent systems where the model reasons about what to do, acts on it, and evaluates the result.
 
@@ -76,6 +78,7 @@ This pattern is known as the ReAct agent loop (Reason + Act) — a standard arch
 
 ## Project Structure
 
+```
 ClearPath-AI-Agent/
 ├── public/
 │   └── index.html
@@ -86,6 +89,7 @@ ClearPath-AI-Agent/
 ├── .gitignore
 ├── package.json
 └── README.md
+```
 
 ---
 
