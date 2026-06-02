@@ -105,7 +105,7 @@ ClearPath-AI-Agent/
 **1. Clone the repository**
 
 ```bash
-git clone https://github.com/yourusername/clearpath.git
+git clone https://github.com/hs804801-a11y/clearpath.git
 cd clearpath
 ```
 
