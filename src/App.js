@@ -35,7 +35,7 @@ async function callOpenRouter(prompt) {
     },
     body: JSON.stringify({
       models: [
-        'nvidia/nemotron-3-super:free',
+        'nvidia/nemotron-3-super-120b-a12b:free',
         'openai/gpt-oss-120b:free',
         'google/gemma-4-31b-it:free',
       ],
