@@ -41,7 +41,6 @@ async function callOpenRouter(prompt) {
       ],
       provider: {
         order: ['OpenInference', 'Poolside'],
-        allow_fallbacks: true
       },
       messages: [{ role: 'user', content: prompt }],
     }),
