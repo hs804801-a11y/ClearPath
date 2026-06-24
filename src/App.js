@@ -35,9 +35,9 @@ async function callOpenRouter(prompt) {
     },
     body: JSON.stringify({
       models: [
+        'openai/gpt-oss-20b:free',
         'poolside/laguna-xs.2:free',
         'openai/gpt-oss-120b:free',
-        'poolside/laguna-m.1:free',
       ],
       messages: [{ role: 'user', content: prompt }],
     }),
