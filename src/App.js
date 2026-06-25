@@ -35,10 +35,13 @@ async function callOpenRouter(prompt) {
     },
     body: JSON.stringify({
       models: [
-        'openai/gpt-oss-120b:free',
         'openai/gpt-oss-20b:free',
+        'openai/gpt-oss-120b:free',
         'poolside/laguna-xs.2:free',
       ],
+      provider: {
+        order: ['OpenInference', 'Poolside']
+      },
       messages: [{ role: 'user', content: prompt }],
     }),
   });
