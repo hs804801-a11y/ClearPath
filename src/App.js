@@ -39,9 +39,6 @@ async function callOpenRouter(prompt) {
         'openai/gpt-oss-20b:free',
         'poolside/laguna-xs.2:free',
       ],
-      provider: {
-        order: ['OpenInference', 'Poolside'],
-      },
       messages: [{ role: 'user', content: prompt }],
     }),
   });
