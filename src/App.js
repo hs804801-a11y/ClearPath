@@ -26,35 +26,41 @@ async function callGroq(prompt) {
   return data.choices[0].message.content;
 }
 
-async function callOpenRouter(prompt) {
+async function callOpenRouter(prompt, model) {
+  const body = {
+    model,
+    messages: [{ role: 'user', content: prompt }],
+  };
+
+  // Only gpt-oss-20b has a paid fallback risk, lock it to free provider
+  if (model === 'openai/gpt-oss-20b:free') {
+    body.provider = { order: ['OpenInference'] };
+  }
+
   const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${process.env.REACT_APP_OPENROUTER_KEY}`,
     },
-    body: JSON.stringify({
-      models: [
-        'openai/gpt-oss-20b:free',
-        'openai/gpt-oss-120b:free',
-        'poolside/laguna-xs.2:free',
-      ],
-      provider: {
-        order: ['OpenInference', 'Poolside']
-      },
-      messages: [{ role: 'user', content: prompt }],
-    }),
+    body: JSON.stringify(body),
   });
   const data = await res.json();
   return data.choices[0].message.content;
 }
+
+const MODE_MODELS = {
+  balanced: 'openai/gpt-oss-20b:free',
+  detailed: 'openai/gpt-oss-120b:free',
+  code: 'poolside/laguna-xs.2:free',
+};
 
 function App() {
   const [task, setTask] = useState('');
   const [steps, setSteps] = useState([]);
   const [result, setResult] = useState('');
   const [phase, setPhase] = useState('idle');
-  const [mode, setMode] = useState('fast'); // 'fast' or 'detailed'
+  const [mode, setMode] = useState('fast'); // 'fast' | 'balanced' | 'detailed' | 'code'
 
   async function runAgent() {
     if (!task.trim()) return;
@@ -63,9 +69,7 @@ function App() {
     setPhase('planning');
 
     try {
-      const callAI = mode === 'fast' ? callGroq : callOpenRouter;
-      const response = await callAI(
-        `You are a task automation agent. Given this task: "${task}"
+      const promptText = `You are a task automation agent. Given this task: "${task}"
 
 Do the following in one response:
 1. Break it into 3-4 sub-tasks
@@ -79,12 +83,15 @@ Respond ONLY in this JSON format:
   ],
   "finalResult": "the complete final answer here"
 }
-No markdown, no explanation, just the JSON.`
-      );
+No markdown, no explanation, just the JSON.`;
+
+      const response = mode === 'fast'
+        ? await callGroq(promptText)
+        : await callOpenRouter(promptText, MODE_MODELS[mode]);
 
       let parsed;
       try {
-        const raw = response.replace(/\`\`\`json|\`\`\`/g, '').trim();
+        const raw = response.replace(/```json|```/g, '').trim();
         parsed = JSON.parse(raw);
       } catch {
         parsed = {
@@ -95,10 +102,7 @@ No markdown, no explanation, just the JSON.`
 
       setPhase('executing');
       for (let i = 0; i < parsed.steps.length; i++) {
-        setSteps(parsed.steps.slice(0, i + 1).map((s, idx) => ({
-          ...s,
-          status: idx === i ? 'done' : 'done',
-        })));
+        setSteps(parsed.steps.slice(0, i + 1).map((s) => ({ ...s, status: 'done' })));
         await new Promise((r) => setTimeout(r, 600));
       }
 
@@ -125,32 +129,24 @@ No markdown, no explanation, just the JSON.`
         {phase === 'idle' && (
           <div className="input-area">
 
-            {/* Mode Selector */}
             <div className="mode-selector">
-              <button
-                className={`mode-btn ${mode === 'fast' ? 'active' : ''}`}
-                onClick={() => setMode('fast')}
-              >
-                ⚡ Fast
-              </button>
-              <button
-                className={`mode-btn ${mode === 'detailed' ? 'active' : ''}`}
-                onClick={() => setMode('detailed')}
-              >
-                🔍 Detailed
-              </button>
+              <button className={`mode-btn ${mode === 'fast' ? 'active' : ''}`} onClick={() => setMode('fast')}>⚡ Fast</button>
+              <button className={`mode-btn ${mode === 'balanced' ? 'active' : ''}`} onClick={() => setMode('balanced')}>⚖️ Balanced</button>
+              <button className={`mode-btn ${mode === 'detailed' ? 'active' : ''}`} onClick={() => setMode('detailed')}>🔍 Detailed</button>
+              <button className={`mode-btn ${mode === 'code' ? 'active' : ''}`} onClick={() => setMode('code')}>💻 Code</button>
             </div>
 
-            {/* Warning */}
             {mode === 'fast' && (
-              <div className="mode-warning">
-                ⚡ <strong>Fast Mode:</strong> Quick responses. Results may be less detailed.
-              </div>
+              <div className="mode-warning">⚡ <strong>Fast Mode:</strong> Quick responses via Groq. Results may be less detailed.</div>
+            )}
+            {mode === 'balanced' && (
+              <div className="mode-warning">⚖️ <strong>Balanced Mode:</strong> Good mix of speed and depth.</div>
             )}
             {mode === 'detailed' && (
-              <div className="mode-warning">
-                🔍 <strong>Detailed Mode:</strong> In-depth responses using advanced models. May take 10-20 seconds longer.
-              </div>
+              <div className="mode-warning">🔍 <strong>Detailed Mode:</strong> Most thorough responses. May take 30-90 seconds.</div>
+            )}
+            {mode === 'code' && (
+              <div className="mode-warning">💻 <strong>Code Mode:</strong> Optimized for programming and technical tasks.</div>
             )}
 
             <textarea
