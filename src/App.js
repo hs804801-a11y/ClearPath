@@ -52,7 +52,7 @@ async function callOpenRouter(prompt, model) {
 const MODE_MODELS = {
   balanced: 'openai/gpt-oss-20b:free',
   detailed: 'openai/gpt-oss-120b:free',
-  code: 'poolside/laguna-xs.2:free',
+  code: 'poolside/laguna-xs-2.1:free',
 };
 
 function App() {
