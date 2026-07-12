@@ -55,58 +55,6 @@ const MODE_MODELS = {
   code: 'poolside/laguna-xs.2:free',
 };
 
-async function callLLM(mode, prompt) {
-  return mode === 'fast'
-    ? await callGroq(prompt)
-    : await callOpenRouter(prompt, MODE_MODELS[mode]);
-}
-
-async function planTask(task, mode) {
-  const prompt = `You are a task planning agent. Given this task: "${task}"
-
-Break it into 3-4 logical sub-tasks needed to complete it.
-
-Respond ONLY in this JSON format, no markdown, no explanation:
-{
-  "steps": [
-    {"title": "short step title", "description": "what this step should produce"}
-  ]
-}`;
-
-  const response = await callLLM(mode, prompt);
-  const raw = response.replace(/```json|```/g, '').trim();
-  const parsed = JSON.parse(raw);
-  return parsed.steps;
-}
-
-async function executeStep(task, step, previousResults, mode) {
-  const context = previousResults.length > 0
-    ? `\n\nResults from previous steps so far:\n${previousResults.map((r, i) => `${i + 1}. ${r}`).join('\n')}`
-    : '';
-
-  const prompt = `You are executing one step of a larger task.
-
-Overall task: "${task}"
-Current step: "${step.title}" — ${step.description}${context}
-
-Produce the result for this specific step only. Be concise but complete.`;
-
-  return await callLLM(mode, prompt);
-}
-
-async function synthesizeResult(task, steps, results, mode) {
-  const prompt = `You are synthesizing a final answer.
-
-Original task: "${task}"
-
-Step results:
-${steps.map((s, i) => `${i + 1}. ${s.title}: ${results[i]}`).join('\n')}
-
-Combine these into one polished, well-formatted final answer to the original task. Use markdown formatting where helpful.`;
-
-  return await callLLM(mode, prompt);
-}
-
 function App() {
   const [task, setTask] = useState('');
   const [steps, setSteps] = useState([]);
@@ -121,24 +69,44 @@ function App() {
     setPhase('planning');
 
     try {
-      const planSteps = await planTask(task, mode);
-      setSteps(planSteps.map((s) => ({ ...s, status: 'waiting' })));
+      const promptText = `You are a task automation agent. Given this task: "${task}"
+
+Do the following in one response:
+1. Break it into 3-4 sub-tasks
+2. Execute each sub-task
+3. Give a final result
+
+Respond ONLY in this JSON format:
+{
+  "steps": [
+    {"title": "step title", "result": "what this step produces"}
+  ],
+  "finalResult": "the complete final answer here"
+}
+No markdown, no explanation, just the JSON.`;
+
+      const response = mode === 'fast'
+        ? await callGroq(promptText)
+        : await callOpenRouter(promptText, MODE_MODELS[mode]);
+
+      let parsed;
+      try {
+        const raw = response.replace(/```json|```/g, '').trim();
+        parsed = JSON.parse(raw);
+      } catch {
+        parsed = {
+          steps: [{ title: 'Processing', result: 'Task analyzed' }],
+          finalResult: response,
+        };
+      }
 
       setPhase('executing');
-      const results = [];
-      for (let i = 0; i < planSteps.length; i++) {
-        setSteps(planSteps.map((s, idx) => ({
-          ...s,
-          status: idx < i ? 'done' : idx === i ? 'active' : 'waiting',
-        })));
-
-        const stepResult = await executeStep(task, planSteps[i], results, mode);
-        results.push(stepResult);
+      for (let i = 0; i < parsed.steps.length; i++) {
+        setSteps(parsed.steps.slice(0, i + 1).map((s) => ({ ...s, status: 'done' })));
+        await new Promise((r) => setTimeout(r, 600));
       }
-      setSteps(planSteps.map((s) => ({ ...s, status: 'done' })));
 
-      const finalResult = await synthesizeResult(task, planSteps, results, mode);
-      setResult(finalResult);
+      setResult(parsed.finalResult);
       setPhase('done');
     } catch (err) {
       setPhase('error');
