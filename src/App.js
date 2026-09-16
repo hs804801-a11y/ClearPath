@@ -10,7 +10,7 @@ async function callGroq(prompt) {
       'Authorization': `Bearer ${process.env.REACT_APP_GROQ_KEY}`,
     },
     body: JSON.stringify({
-      model: 'llama-3.3-70b-versatile',
+      model: 'openai/gpt-oss-20b',
       messages: [
         {
           role: 'system',
@@ -32,11 +32,6 @@ async function callOpenRouter(prompt, model) {
     messages: [{ role: 'user', content: prompt }],
   };
 
-  // Only gpt-oss-20b has a paid fallback risk, lock it to free provider
-  if (model === 'openai/gpt-oss-20b:free') {
-    body.provider = { order: ['OpenInference'] };
-  }
-
   const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -50,8 +45,8 @@ async function callOpenRouter(prompt, model) {
 }
 
 const MODE_MODELS = {
-  balanced: 'openai/gpt-oss-20b:free',
-  detailed: 'openai/gpt-oss-120b:free',
+  balanced: 'nvidia/nemotron-3-nano-30b-a3b:free',
+  detailed: 'nvidia/nemotron-3-ultra-550b-a55b:free',
   code: 'poolside/laguna-xs-2.1:free',
 };
 
