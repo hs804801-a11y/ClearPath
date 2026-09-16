@@ -54,7 +54,7 @@ async function callOpenRouter(prompt, model) {
 }
 
 const MODE_MODELS = {
-  balanced: 'nex-agi/nex-n2.5-mini:free',
+  balanced: 'inclusionai/ling-3.0-flash-vl:free',
   detailed: 'nex-agi/nex-n2.5-mini:free',
   code: 'nex-agi/nex-n2.5-pro:free',
 };
@@ -148,7 +148,7 @@ function App() {
 
     try {
       const modeGuidance = mode === 'detailed'
-        ? 'Provide an in-depth, thorough, and high-density answer. If creating study plans, schedules, or roadmaps, organize into clear weekly phases or modules with key concepts, practical exercises, and top resources (avoid repetitive day-by-day padding so it delivers quickly).'
+        ? 'Give a concise, high-quality answer with essential details only. Use structured sections. For plans/roadmaps, use weekly modules with concepts, practice, and resources. Avoid repetition and filler.'
         : 'Provide a clear, balanced, and direct response.';
 
       const promptText = `You are a helpful task automation agent.
