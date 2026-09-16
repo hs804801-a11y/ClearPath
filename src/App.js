@@ -37,18 +37,99 @@ async function callOpenRouter(prompt, model) {
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${process.env.REACT_APP_OPENROUTER_KEY}`,
+      'HTTP-Referer': typeof window !== 'undefined' ? window.location.origin : '',
+      'X-Title': 'ClearPath AI Agent',
     },
     body: JSON.stringify(body),
   });
   const data = await res.json();
+  if (data.error) {
+    console.error(`OpenRouter error (${model}):`, data.error);
+    throw new Error(data.error.message || `OpenRouter error for ${model}`);
+  }
+  if (!data.choices || !data.choices[0] || !data.choices[0].message || !data.choices[0].message.content) {
+    throw new Error(`No content returned from ${model}`);
+  }
   return data.choices[0].message.content;
 }
 
 const MODE_MODELS = {
-  balanced: 'nvidia/nemotron-3-nano-30b-a3b:free',
-  detailed: 'nvidia/nemotron-3-ultra-550b-a55b:free',
-  code: 'poolside/laguna-xs-2.1:free',
+  balanced: 'nex-agi/nex-n2.5-mini:free',
+  detailed: 'nex-agi/nex-n2.5-mini:free',
+  code: 'nex-agi/nex-n2.5-pro:free',
 };
+
+function parseAgentResponse(response) {
+  if (!response || !response.trim()) {
+    return {
+      steps: [{ title: 'Completed', result: 'Task executed' }],
+      finalResult: 'No content was generated. Please try again.',
+    };
+  }
+
+  let text = response.trim();
+  let parsed = null;
+
+  // 1. Try markdown code block extraction
+  const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+  const jsonCandidate = codeBlockMatch ? codeBlockMatch[1].trim() : text;
+
+  try {
+    parsed = JSON.parse(jsonCandidate);
+  } catch {
+    // 2. Try slicing between first { and last }
+    const firstBrace = text.indexOf('{');
+    const lastBrace = text.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      try {
+        parsed = JSON.parse(text.slice(firstBrace, lastBrace + 1));
+      } catch {
+        // 3. Fallback extraction of finalResult if JSON has unescaped quotes or newlines
+        const finalMatch = text.match(/"finalResult"\s*:\s*"([\s\S]*?)"\s*\}?\s*$/);
+        if (finalMatch) {
+          const stepsMatch = text.match(/"steps"\s*:\s*(\[[\s\S]*?\])\s*,\s*"finalResult"/);
+          let steps = [{ title: 'Executed', result: 'Task executed' }];
+          if (stepsMatch) {
+            try { steps = JSON.parse(stepsMatch[1]); } catch {}
+          }
+          const cleanFinal = finalMatch[1]
+            .replace(/\\n/g, '\n')
+            .replace(/\\"/g, '"')
+            .replace(/\\\\/g, '\\');
+          return { steps, finalResult: cleanFinal };
+        }
+      }
+    }
+  }
+
+  if (parsed && typeof parsed === 'object') {
+    let steps = Array.isArray(parsed.steps) && parsed.steps.length > 0
+      ? parsed.steps
+      : [{ title: 'Execution', result: 'Task completed' }];
+    let finalResult = parsed.finalResult || parsed.result || parsed.answer || '';
+
+    // If finalResult is an object or nested JSON string, unwrap it
+    if (typeof finalResult === 'object') {
+      finalResult = JSON.stringify(finalResult, null, 2);
+    } else if (typeof finalResult === 'string' && finalResult.trim().startsWith('{') && finalResult.trim().endsWith('}')) {
+      try {
+        const inner = JSON.parse(finalResult);
+        finalResult = inner.finalResult || inner.answer || inner.result || JSON.stringify(inner, null, 2);
+      } catch {}
+    }
+
+    if (finalResult) {
+      return { steps, finalResult };
+    }
+  }
+
+  // 4. Fallback: If JSON parsing failed completely, the model outputted plain markdown text!
+  const cleaned = text.replace(/^```(?:json|markdown)?\s*|\s*```$/g, '').trim();
+  return {
+    steps: [{ title: 'Planning', result: 'Analyzed' }, { title: 'Execution', result: 'Completed' }],
+    finalResult: cleaned,
+  };
+}
 
 function App() {
   const [task, setTask] = useState('');
@@ -56,44 +137,46 @@ function App() {
   const [result, setResult] = useState('');
   const [phase, setPhase] = useState('idle');
   const [mode, setMode] = useState('fast'); // 'fast' | 'balanced' | 'detailed' | 'code'
+  const [errorMessage, setErrorMessage] = useState('');
 
   async function runAgent() {
     if (!task.trim()) return;
     setSteps([]);
     setResult('');
+    setErrorMessage('');
     setPhase('planning');
 
     try {
-      const promptText = `You are a task automation agent. Given this task: "${task}"
+      const modeGuidance = mode === 'detailed'
+        ? 'Provide an in-depth, thorough, and high-density answer. If creating study plans, schedules, or roadmaps, organize into clear weekly phases or modules with key concepts, practical exercises, and top resources (avoid repetitive day-by-day padding so it delivers quickly).'
+        : 'Provide a clear, balanced, and direct response.';
 
-Do the following in one response:
-1. Break it into 3-4 sub-tasks
-2. Execute each sub-task
-3. Give a final result
+      const promptText = `You are a helpful task automation agent.
+User request: "${task}"
+
+Handling instructions:
+1. If the request is a simple greeting or casual message (like "hi", "hello", "hey"):
+   - Return 1-2 simple sub-tasks (e.g. "Greeting", "Ready for instructions").
+   - In "finalResult", give a warm, natural greeting and invite the user to give a task. Do NOT write robotic sections.
+2. If the request is an actual task or question:
+   - Break it into 3-4 concise, execution-oriented sub-tasks (keep each step result to 1 sharp sentence).
+   - In "finalResult", directly deliver the complete, high-quality solution. ${modeGuidance}
+   - Never write meta-commentary about the prompt or the agent itself (e.g. do not say "Section 1: Task Interpretation"). Deliver actual results directly.
 
 Respond ONLY in this JSON format:
 {
   "steps": [
-    {"title": "step title", "result": "what this step produces"}
+    {"title": "step title", "result": "1 sentence summary"}
   ],
-  "finalResult": "the complete final answer here"
+  "finalResult": "Rich, formatted Markdown response"
 }
-No markdown, no explanation, just the JSON.`;
+No markdown outside the JSON, no preamble, only valid JSON.`;
 
       const response = mode === 'fast'
         ? await callGroq(promptText)
         : await callOpenRouter(promptText, MODE_MODELS[mode]);
 
-      let parsed;
-      try {
-        const raw = response.replace(/```json|```/g, '').trim();
-        parsed = JSON.parse(raw);
-      } catch {
-        parsed = {
-          steps: [{ title: 'Processing', result: 'Task analyzed' }],
-          finalResult: response,
-        };
-      }
+      const parsed = parseAgentResponse(response);
 
       setPhase('executing');
       for (let i = 0; i < parsed.steps.length; i++) {
@@ -104,6 +187,8 @@ No markdown, no explanation, just the JSON.`;
       setResult(parsed.finalResult);
       setPhase('done');
     } catch (err) {
+      console.error('Agent error:', err);
+      setErrorMessage(err.message || 'Something went wrong');
       setPhase('error');
     }
   }
@@ -112,6 +197,7 @@ No markdown, no explanation, just the JSON.`;
     setTask('');
     setSteps([]);
     setResult('');
+    setErrorMessage('');
     setPhase('idle');
   }
 
@@ -188,7 +274,7 @@ No markdown, no explanation, just the JSON.`;
             )}
 
             {phase === 'error' && (
-              <div className="error">Something went wrong. <span onClick={reset}>Try again</span></div>
+              <div className="error">{errorMessage ? `${errorMessage}. ` : 'Something went wrong. '}<span onClick={reset}>Try again</span></div>
             )}
           </div>
         )}
